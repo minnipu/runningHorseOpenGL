@@ -194,3 +194,6 @@ FakesAssemblies/
 
 # Visual Studio 6 workspace options file
 *.opt
+*.dll
+/Practice385.vcxproj
+/Practice385.vcxproj.filters
