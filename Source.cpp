@@ -23,6 +23,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <iostream>
+#include <time.h>
+#include <string>
 //=========================================================//
 //=========================================================//
 // person/horse position in the environment
@@ -37,10 +39,11 @@ GLfloat   g_elevationAngle = 0.0;
 float rad = 0;
 static const float PI = 3.141592653;
 const float DEFAULT_SPEED = 1.0f;
+struct FrameAngles;
 //=========================================================//
 //=========================================================//
 GLvoid DrawGround();
-GLvoid DrawHorse();
+GLvoid DrawHorse(FrameAngles);
 GLvoid UpdateHorse();
 GLvoid DrawLinesXYZ();
 float rotateBase_degrees = 0;
@@ -59,34 +62,8 @@ void cleanUP_data(void);
 const int   WORLD_SIZE = 250;
 //=========================================================//
 //=========================================================//
-static void text_onScreen(int row, int col, const char *fmt, ...);
-//=========================================================//
-//=========================================================//
-static void text_onScreen(int row, int col, const char *fmt, ...)
-{
-	static char buf[256];
-	int viewport[4];
-	//void *font = GLUT_BITMAP_9_BY_15;
-	va_list args;
 
-	va_start(args, fmt);
-	(void)vsprintf_s(buf, fmt, args);
-	va_end(args);
 
-	glGetIntegerv(GL_VIEWPORT, viewport);
-
-	glPushMatrix();
-	glLoadIdentity();
-
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	glLoadIdentity();
-
-	glOrtho(0, viewport[2], 0, viewport[3], -1, 1);
-	glPopMatrix();
-	glMatrixMode(GL_MODELVIEW);
-	glPopMatrix();
-}
 //=========================================================//
 //=========================================================//
 static void resize(int width, int height)
@@ -113,26 +90,72 @@ struct holdPosition //holds the positions on the object type position of object 
 	GLfloat z = 0.0;
 	GLfloat angle = 90.0;
 	GLfloat rad = PI*angle / 180; //converts angle to radians 
+	bool initialized = false; 
+	int state = 2;
 } horse;
 
 struct FrameAngles
 {
-	GLfloat neckp1;
-	GLfloat neck2;
+	GLfloat neckbt;
+	GLfloat necktp;
 	GLfloat head;
 
-	GLfloat frtLLeg1;
-	GLfloat frtLLeg2;
-	GLfloat frtRLeg1;
-	GLfloat frtRleg2;
+	GLfloat frtLLegtp;
+	GLfloat frtLLegbt;
+	GLfloat frtRLegtp;
+	GLfloat frtRlegbt;
 
-	GLfloat bkLLeg1;
-	GLfloat bkLLeg2;
-	GLfloat bkRLeg1;
-	GLfloat bkRLeg2;
+	GLfloat bkLLegtp;
+	GLfloat bkLLegbt;
+	GLfloat bkRLegtp;
+	GLfloat bkRLegbt;
 
 	GLfloat tail;
-}walk[8], trot[8], gallop[8];
+}still, walk[8], trot[8], gallop[8];
+
+GLvoid initFrames() //creates walking positions
+{
+    still.neckbt = -80;
+	still.necktp = 25;
+	still.head = 87;
+	still.frtLLegtp = 90;
+	still.frtLLegbt = 10;
+	still.frtRLegtp = 90;
+	still.frtRlegbt = 10;
+	still.bkLLegtp = 90;
+	still.bkLLegbt = 10;
+	still.bkRLegtp = 90;
+	still.bkRLegbt = 10;
+	still.tail = -50;
+
+	walk[0].neckbt = -81;
+	walk[0].necktp = 25;
+	walk[0].head = 87;
+	walk[0].frtLLegtp = 80;
+	walk[0].frtLLegbt = 10;
+	walk[0].frtRLegtp = 100;
+	walk[0].frtRlegbt = 10;
+	walk[0].bkLLegtp = 100;
+	walk[0].bkLLegbt = 10;
+	walk[0].bkRLegtp = 80;
+	walk[0].bkRLegbt = 10;
+	walk[0].tail = -40;
+
+	walk[1].neckbt = -82;
+	walk[1].necktp = 25;
+	walk[1].head = 87;
+	walk[1].frtLLegtp = 100;
+	walk[1].frtLLegbt = 10;
+	walk[1].frtRLegtp = 80;
+	walk[1].frtRlegbt = 10;
+	walk[1].bkLLegtp = 80;
+	walk[1].bkLLegbt = 10;
+	walk[1].bkRLegtp = 100;
+	walk[1].bkRLegbt = 10;
+	walk[1].tail = -45;
+
+
+}
 
 GLvoid output(float row, float col, std::string out)
 {
@@ -206,10 +229,11 @@ static void display(void)
 	output(4, -6, "- look up or down: A / Z");
 	output(3.5, -6, "- look right/left: arrows ->/<-");
 	output(3, -6, "- walk forward/backward: arrows UP/Down");
+	output(2.5, -6, "XYZ " + std::to_string(horse.angle));
 
 	DrawGround();
-	DrawHorse();
 	DrawLinesXYZ();
+	UpdateHorse();
 
 	glutSwapBuffers();
 }
@@ -241,15 +265,19 @@ void move_camera(int specialKEY, char normalKEY)
 	
 	case '1':
 		horseSpeed = 0;
+		horse.state = 1;
 		break;
 	case '2':
-		horseSpeed = 10;
+		horseSpeed = 0.5;
+		horse.state = 2;
 		break;
 	case '3':
-		horseSpeed = 50;
+		horseSpeed = 7;
+		horse.state = 3;
 		break;
 	case '4':
-		horseSpeed = 100;
+		horseSpeed = 15;
+		horse.state = 4;
 		break;
 	default:
 	{  
@@ -451,15 +479,52 @@ GLvoid DrawLinesXYZ()
 //=========================================================//
 GLvoid UpdateHorse() //cosin and sin take sinputs as radians, and angle converts to radians
 {
+	if (!horse.initialized)
+	{
+		initFrames();
+	}
+	static int frameCounter = 0;
+
 	horse.rad = PI*horse.angle / 180.0;
 	horse.x += sin(horse.rad)*horseSpeed / 500.0;
 	horse.z += cos(horse.rad)*horseSpeed / 500.0;
-	DrawHorse();
+
+	static time_t lasttime = time(nullptr);
+	time_t currenttime = time(nullptr);
+	if (currenttime - lasttime > 0.001)
+	{
+		lasttime = currenttime;
+		frameCounter++;
+		if (frameCounter > 1)
+		{
+			frameCounter = 0;
+		}
+	}
+
+	if (horse.state == 1)
+	{
+		DrawHorse(still);
+	}
+	else if (horse.state == 2)
+	{
+		DrawHorse(walk[frameCounter]);
+	}
+	else if (horse.state == 3)
+	{
+		DrawHorse(trot[frameCounter]);
+	}
+	else if (horse.state == 4)
+	{
+		DrawHorse(gallop[frameCounter]);
+	}
+
+
+	DrawHorse(walk[frameCounter]);
 }
 
 //=========================================================//
 //=========================================================//
-GLvoid DrawHorse()
+GLvoid DrawHorse(FrameAngles gait)
 {
 	//Body of Horse
 	glPushMatrix();
@@ -479,17 +544,17 @@ GLvoid DrawHorse()
 		glPushMatrix();  
 		glTranslatef(0, .4, 1.2);
 		//
-		glRotated(-80, 1, 0, 0);
+		glRotated(gait.neckbt, 1, 0, 0);
 		gluCylinder(g_normalObject, 0.2, 0.19, 0.5, 20, 8);
 			//make neck top
 			glPushMatrix();
 			glTranslatef(0, 0, 0.5);
-			glRotated(25, 1, 0, 0);
+			glRotated(gait.necktp, 1, 0, 0);
 			gluCylinder(g_normalObject, 0.19, 0.10, 0.5, 20, 8);
 				//make Head
 				glPushMatrix();
 				glTranslatef(0, 0, .5);
-				glRotated(87, 1, 0, 0);
+				glRotated(gait.head, 1, 0, 0);
 				gluCylinder(g_normalObject, 0.2, 0.1, 0.6, 20, 8);
 					//make Horn
 					glPushMatrix();
@@ -506,62 +571,63 @@ GLvoid DrawHorse()
 		glPopMatrix();
 
 		
-		//make Leg Left Front
+		//make Leg Left Front top
 		glPushMatrix();
 		glTranslatef(0.15, -.3, 1.3);
-		glRotated(90, 1, 0, 0);
+		glRotated(gait.frtLLegtp, 1, 0, 0);
 	    //DrawLinesXYZ();
 		gluCylinder(g_normalObject, 0.1, 0.1, 0.6, 20, 8);
 			//make Leg Left Front bottom
 			glPushMatrix();
 			glTranslatef(0, 0, 0.5);
-			glRotated(10,10, 0, 0);
+			glRotated(gait.frtLLegbt,10, 0, 0);
 			gluCylinder(g_normalObject, 0.1, 0.13, 0.67, 20, 8);
 			glPopMatrix();
 		glPopMatrix();
 
-		//make Leg Right Front
+		//make Leg Right Front top
 		glPushMatrix();
 		glTranslatef(-.15, -.3, 1.3);
-		glRotated(90, 1, 0, 0);
+		glRotated(gait.frtRLegtp, 1, 0, 0);
 		gluCylinder(g_normalObject, 0.1, 0.1, 0.6, 20, 8);
 			//make Leg Right Front bottom
 			glPushMatrix();
 			glTranslatef(0, 0, 0.5);
-			glRotated(10, 10, 0, 0);
+			glRotated(gait.frtRlegbt, 10, 0, 0);
 			gluCylinder(g_normalObject, 0.1, 0.13, 0.67, 20, 8);
 			glPopMatrix();
 		glPopMatrix();
 		
-		//make Leg Left Back
+		//make Leg Left Back top
 		glPushMatrix();
 		glTranslatef(0.15, -.3, 0.15);
-		glRotated(90, 1, 0, 0);
+		glRotated(gait.bkLLegtp, 1, 0, 0);
 		gluCylinder(g_normalObject, 0.15, 0.1, 0.6, 20, 8);
 			//make left leg back bottom
 			glPushMatrix();
 			glTranslatef(0, 0, 0.5);
-			glRotated(10, -10, 0, 0);
+			glRotated(gait.bkLLegbt, -10, 0, 0);
 			gluCylinder(g_normalObject, 0.1, 0.13, 0.67, 20, 8);
 			glPopMatrix();
 		//DrawLinesXYZ();
 		glPopMatrix();
 
+		//make right leg back top
 		glPushMatrix();
 		glTranslatef(-0.15, -.3, 0.15);
-		glRotated(90, 1, 0, 0);
+		glRotated(gait.bkRLegtp, 1, 0, 0);
 		gluCylinder(g_normalObject, 0.15, 0.1, 0.6, 20, 8);
-			//make left leg back bottom
+			//make right leg back bottom
 			glPushMatrix();
 			glTranslatef(0, 0, 0.5);
-			glRotated(10, -10, 0, 0);
+			glRotated(gait.bkRLegbt, -10, 0, 0);
 			gluCylinder(g_normalObject, 0.1, 0.13, 0.67, 20, 8);
 			glPopMatrix();
 		glPopMatrix();
 
 		//make tail
 		glPushMatrix();
-		glRotated(-50, 1, 0,0 );
+		glRotated(gait.tail, 1, 0,0 );
 		glTranslated(0, 0.07, -0.5);
 		gluCylinder(g_normalObject, 0.18, 0.1, 0.6, 20, 8);
 		glPopMatrix();
@@ -572,7 +638,4 @@ GLvoid DrawHorse()
 //------------------------------------------Horse Complete
 //=========================================================//
 //=========================================================//
-GLvoid Trot()
-{
 
-}
